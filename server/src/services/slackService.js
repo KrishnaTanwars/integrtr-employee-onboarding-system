@@ -1,13 +1,17 @@
-require('dotenv').config();
+import { getProfileUrl } from '../utils/sfUrls.js';
 
 const TEAM_PREFIX = process.env.TEAM_NAME || '[Team 9]';
 const TEAM_WEBHOOK = process.env.SLACK_TEAM_WEBHOOK_URL;
 const HR_WEBHOOK = process.env.SLACK_HR_WEBHOOK_URL;
 const EMPLOYEE_WEBHOOK = process.env.SLACK_EMPLOYEE_WEBHOOK_URL || TEAM_WEBHOOK;
-const { getProfileUrl } = require('../utils/sfUrls');
+const USE_MOCK_SLACK = process.env.USE_MOCK_SLACK === 'true';
 
 async function postToSlack(webhookUrl, text) {
     if (!webhookUrl) throw new Error('Slack webhook URL is not configured');
+    if (USE_MOCK_SLACK) {
+        console.log(`📢 [MOCK SLACK] Webhook: ${webhookUrl} -> Message:`, text);
+        return;
+    }
 
     const response = await fetch(webhookUrl, {
         method: 'POST',
@@ -21,13 +25,13 @@ async function postToSlack(webhookUrl, text) {
     }
 }
 
-async function notifyTeam({ employeeName, department, email }) {
+export async function notifyTeam({ employeeName, department, email }) {
     await postToSlack(TEAM_WEBHOOK,
         `${TEAM_PREFIX} 👋 Welcome *${employeeName}* to the team!\n` +
         `• Department: ${department}\n• Email: ${email}`);
 }
 
-async function notifyHR({ employeeName, department, email, sfEmployeeId }) {
+export async function notifyHR({ employeeName, department, email, sfEmployeeId }) {
     const profileUrl = getProfileUrl(sfEmployeeId);
     await postToSlack(HR_WEBHOOK,
         `${TEAM_PREFIX} 📋 *New hire for HR review*\n` +
@@ -35,10 +39,8 @@ async function notifyHR({ employeeName, department, email, sfEmployeeId }) {
         `• Email: ${email}\n• <${profileUrl}|View SuccessFactors Profile>`);
 }
 
-async function notifyEmployee({ employeeName, department }) {
+export async function notifyEmployee({ employeeName, department }) {
     await postToSlack(EMPLOYEE_WEBHOOK,
         `${TEAM_PREFIX} 🎉 Hi *${employeeName}*, welcome aboard!\n` +
         `Your onboarding in *${department}* has been initiated. HR will reach out shortly.`);
 }
-
-module.exports = { notifyTeam, notifyHR, notifyEmployee };

@@ -1,16 +1,29 @@
-require('dotenv').config();
-const { COMPANY_ID, SF_API_BASE, SF_USER_ID, SF_PASSWORD } = require('../config/sfConfig');
+import { COMPANY_ID, SF_API_BASE, SF_USER_ID, SF_PASSWORD, USE_MOCK_SF } from '../config/sfConfig.js';
 
 function getAuthHeader() {
     const authString = `${SF_USER_ID}@${COMPANY_ID}`;
     return `Basic ${Buffer.from(`${authString}:${SF_PASSWORD}`).toString('base64')}`;
 }
 
-function generateUserId() {
+export function generateUserId() {
+    if (USE_MOCK_SF) {
+        return `SF-2026-${String(Math.floor(100000 + Math.random() * 900000))}`;
+    }
     return `t9_${Date.now()}`;
 }
 
-async function createEmployee({ firstName, lastName, email, userId }) {
+export async function createEmployee({ firstName, lastName, email, userId }) {
+    if (USE_MOCK_SF) {
+        const sfId = userId || generateUserId();
+        return {
+            sfId,
+            username: sfId,
+            firstName: firstName?.trim() || 'Employee',
+            lastName: lastName?.trim() || 'New',
+            email: email?.trim(),
+            hasPeopleProfile: true
+        };
+    }
     const sfId = userId || generateUserId();
 
     const payload = {
@@ -34,7 +47,13 @@ async function createEmployee({ firstName, lastName, email, userId }) {
         body: JSON.stringify(payload)
     });
 
-    const data = await response.json();
+    const text = await response.text();
+    let data;
+    try {
+        data = text ? JSON.parse(text) : null;
+    } catch (e) {
+        throw new Error(`SuccessFactors API returned a non-JSON response (Status ${response.status}): ${text.substring(0, 200)}`);
+    }
 
     if (!response.ok) {
         throw new Error(data?.error?.message?.value || `SF API returned status ${response.status}`);
@@ -57,7 +76,17 @@ async function createEmployee({ firstName, lastName, email, userId }) {
     };
 }
 
-async function getUser(userId) {
+export async function getUser(userId) {
+    if (USE_MOCK_SF) {
+        return {
+            username: userId,
+            firstName: 'Mock',
+            lastName: 'User',
+            email: 'mock@example.com',
+            personIdExternal: userId,
+            personGuid: 'mock-guid'
+        };
+    }
     const response = await fetch(
         `${SF_API_BASE}/odata/v2/User('${encodeURIComponent(userId)}')?$format=json`,
         {
@@ -68,12 +97,17 @@ async function getUser(userId) {
         }
     );
 
-    const data = await response.json();
+    const text = await response.text();
+    let data;
+    try {
+        data = text ? JSON.parse(text) : null;
+    } catch (e) {
+        throw new Error(`SuccessFactors API returned a non-JSON response (Status ${response.status}): ${text.substring(0, 200)}`);
+    }
+    
     if (!response.ok) {
         throw new Error(data?.error?.message?.value || `User lookup failed (${response.status})`);
     }
 
     return data?.d || null;
 }
-
-module.exports = { createEmployee, getUser, generateUserId };

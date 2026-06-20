@@ -1,6 +1,6 @@
-const onboardingService = require('../services/onboardingService');
-const { dbGet } = require('../config/db');
-const { getProfileUrl } = require('../utils/sfUrls');
+import * as onboardingService from '../services/onboardingService.js';
+import { dbGet } from '../config/db.js';
+import { getProfileUrl } from '../utils/sfUrls.js';
 
 function enrich(record) {
     if (!record?.sf_employee_id) return record;
@@ -20,7 +20,7 @@ function failurePayload(record, failureInfo) {
     };
 }
 
-async function listOnboardings(req, res) {
+export async function listOnboardings(req, res) {
     try {
         res.json({ success: true, data: await onboardingService.listOnboardings() });
     } catch (err) {
@@ -28,51 +28,23 @@ async function listOnboardings(req, res) {
     }
 }
 
-async function createOnboarding(req, res) {
+export async function createOnboarding(req, res) {
     try {
         const { record } = await onboardingService.createOnboarding(req.body);
-        const allSuccess = ['sf_status', 'slack_team_status', 'slack_hr_status', 'slack_employee_status']
-            .every((k) => record[k] === 'success');
-
-        if (allSuccess) {
-            return res.json({ success: true, data: enrich(record) });
-        }
-
-        const dbRow = await dbGet('SELECT * FROM onboarding_requests WHERE id = ?', [record.id]);
-        const failureInfo = onboardingService.getFailedStepInfo(dbRow);
-        res.status(422).json({
-            success: false,
-            error: failureInfo?.step || 'Workflow incomplete',
-            data: failurePayload(record, failureInfo)
-        });
+        res.json({ success: true, data: enrich(record) });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
 }
 
-async function retryOnboarding(req, res) {
+export async function retryOnboarding(req, res) {
     try {
         const { id } = req.body;
         if (!id) return res.status(400).json({ success: false, error: 'id is required' });
 
         const record = await onboardingService.retryOnboarding(id);
-        const allSuccess = ['sf_status', 'slack_team_status', 'slack_hr_status', 'slack_employee_status']
-            .every((k) => record[k] === 'success');
-
-        if (allSuccess) {
-            return res.json({ success: true, data: enrich(record) });
-        }
-
-        const dbRow = await dbGet('SELECT * FROM onboarding_requests WHERE id = ?', [id]);
-        const failureInfo = onboardingService.getFailedStepInfo(dbRow);
-        res.status(422).json({
-            success: false,
-            error: failureInfo?.step || 'Retry incomplete',
-            data: failurePayload(record, failureInfo)
-        });
+        res.json({ success: true, data: enrich(record) });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });
     }
 }
-
-module.exports = { listOnboardings, createOnboarding, retryOnboarding };

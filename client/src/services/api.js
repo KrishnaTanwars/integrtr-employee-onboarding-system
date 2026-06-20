@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "http://localhost:5000/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:5000/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -39,5 +39,10 @@ export const getAllOnboardings = async () => {
 
 export const retryOnboarding = async (id) => {
   const res = await API.post("/onboarding/retry", { id });
+  return res.data;
+};
+
+export const getConfig = async () => {
+  const res = await API.get("/config");
   return res.data;
 };

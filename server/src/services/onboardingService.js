@@ -1,7 +1,7 @@
-const { randomUUID } = require('crypto');
-const { dbRun, dbGet, dbAll } = require('../config/db');
-const sfService = require('./successFactorsService');
-const slackService = require('./slackService');
+import { randomUUID } from 'crypto';
+import { dbRun, dbGet, dbAll } from '../config/db.js';
+import * as sfService from './successFactorsService.js';
+import * as slackService from './slackService.js';
 
 function mapRow(row) {
     if (!row) return null;
@@ -109,24 +109,40 @@ async function runSlackEmployeeStep(record) {
     }
 }
 
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function executeWorkflow(record) {
-    for (const step of [runSuccessFactorsStep, runSlackTeamStep, runSlackHRStep, runSlackEmployeeStep]) {
+    const delayMs = parseInt(process.env.WORKFLOW_STEP_DELAY_MS, 10) || 0;
+    const steps = [
+        { run: runSuccessFactorsStep, name: 'SuccessFactors' },
+        { run: runSlackTeamStep, name: 'Slack Team' },
+        { run: runSlackHRStep, name: 'Slack HR' },
+        { run: runSlackEmployeeStep, name: 'Slack Employee' }
+    ];
+
+    for (let i = 0; i < steps.length; i++) {
+        const step = steps[i];
         try {
-            await step(record);
-        } catch {
+            await step.run(record);
+        } catch (err) {
+            console.error(`Error in step ${step.name}:`, err.message);
             break;
+        }
+
+        if (i < steps.length - 1 && delayMs > 0) {
+            await delay(delayMs);
         }
     }
     await updateOverallStatus(record.id);
-    return dbGet('SELECT * FROM onboarding_requests WHERE id = ?', [record.id]);
+    return await dbGet('SELECT * FROM onboarding_requests WHERE id = ?', [record.id]);
 }
 
-async function listOnboardings() {
+export async function listOnboardings() {
     const rows = await dbAll('SELECT * FROM onboarding_requests ORDER BY created_at DESC');
     return rows.map(mapRow);
 }
 
-async function createOnboarding(data) {
+export async function createOnboarding(data) {
     const { first_name, last_name, email, department, idempotency_key } = data;
 
     if (!first_name?.trim() || !last_name?.trim() || !email?.trim() || !department || !idempotency_key) {
@@ -135,8 +151,10 @@ async function createOnboarding(data) {
 
     const existing = await dbGet('SELECT * FROM onboarding_requests WHERE idempotency_key = ?', [idempotency_key]);
     if (existing) {
-        const updated = await executeWorkflow(existing);
-        return { record: mapRow(updated), isDuplicate: true };
+        if (existing.status !== 'success') {
+            executeWorkflow(existing).catch(console.error);
+        }
+        return { record: mapRow(existing), isDuplicate: true };
     }
 
     const id = randomUUID();
@@ -150,18 +168,18 @@ async function createOnboarding(data) {
     );
 
     const record = await dbGet('SELECT * FROM onboarding_requests WHERE id = ?', [id]);
-    const updated = await executeWorkflow(record);
-    return { record: mapRow(updated), isDuplicate: false };
+    executeWorkflow(record).catch(console.error);
+    return { record: mapRow(record), isDuplicate: false };
 }
 
-async function retryOnboarding(id) {
+export async function retryOnboarding(id) {
     const record = await dbGet('SELECT * FROM onboarding_requests WHERE id = ?', [id]);
     if (!record) throw new Error('Onboarding request not found');
-    const updated = await executeWorkflow(record);
-    return mapRow(updated);
+    executeWorkflow(record).catch(console.error);
+    return mapRow(record);
 }
 
-function getFailedStepInfo(record) {
+export function getFailedStepInfo(record) {
     if (record.sf_status === 'failed') {
         return { step: 'SuccessFactors User Upsert', advice: 'Check SF credentials and unique userId.', error: record.sf_error };
     }
@@ -176,5 +194,3 @@ function getFailedStepInfo(record) {
     }
     return null;
 }
-
-module.exports = { listOnboardings, createOnboarding, retryOnboarding, getFailedStepInfo, mapRow };

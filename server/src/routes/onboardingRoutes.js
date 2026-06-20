@@ -1,8 +1,8 @@
-const express = require('express');
-const controller = require('../controllers/onboardingController');
-const sfService = require('../services/successFactorsService');
-const { COMPANY_ID, SF_API_BASE, SF_UI_BASE } = require('../config/sfConfig');
-const { getLoginUrl, getProfileUrl } = require('../utils/sfUrls');
+import express from 'express';
+import { listOnboardings, createOnboarding, retryOnboarding } from '../controllers/onboardingController.js';
+import { getUser } from '../services/successFactorsService.js';
+import { COMPANY_ID, SF_API_BASE, SF_UI_BASE, USE_MOCK_SF } from '../config/sfConfig.js';
+import { getLoginUrl, getProfileUrl } from '../utils/sfUrls.js';
 
 const router = express.Router();
 
@@ -13,6 +13,7 @@ router.get('/config', (req, res) => {
             company_id: COMPANY_ID,
             api_base_url: SF_API_BASE,
             ui_base_url: SF_UI_BASE,
+            use_mock_sf: USE_MOCK_SF,
             login_url: getLoginUrl(),
             upsert_endpoint: `${SF_API_BASE}/odata/v2/upsert`
         }
@@ -21,7 +22,7 @@ router.get('/config', (req, res) => {
 
 router.get('/onboarding/verify/:userId', async (req, res) => {
     try {
-        const user = await sfService.getUser(req.params.userId);
+        const user = await getUser(req.params.userId);
         res.json({
             success: true,
             data: {
@@ -39,8 +40,8 @@ router.get('/onboarding/verify/:userId', async (req, res) => {
     }
 });
 
-router.get('/onboarding', controller.listOnboardings);
-router.post('/onboarding/create', controller.createOnboarding);
-router.post('/onboarding/retry', controller.retryOnboarding);
+router.get('/onboarding', listOnboardings);
+router.post('/onboarding/create', createOnboarding);
+router.post('/onboarding/retry', retryOnboarding);
 
-module.exports = router;
+export default router;
